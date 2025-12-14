@@ -6,12 +6,16 @@ import altair as alt
 # 1. 頁面設定
 st.set_page_config(page_title="車輛軌跡分析系統", layout="wide")
 
-# 2. CSS 強制修正 (含手機選單配色修復)
+# 2. CSS 強制修正 (手機/電腦通用深色戰情風格)
 st.markdown("""
 <style>
     /* =========================================
-       1. 全域與容器配色 (鎖定深色)
+       1. 全域配色鎖定 (強制深色模式)
        ========================================= */
+    :root {
+        color-scheme: dark;
+    }
+    
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #0E1117 !important;
         color: #FAFAFA !important;
@@ -22,59 +26,52 @@ st.markdown("""
     }
 
     /* 強制所有文字顏色 */
-    .stApp p, .stApp div, .stApp span, .stApp label, h1, h2, h3, h4, h5, h6, li {
+    p, div, span, label, h1, h2, h3, h4, h5, h6, li {
         color: #E0E0E0 !important;
     }
 
-    /* 全域字體 */
     html, body, [class*="css"] {
         font-family: "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif !important;
     }
 
     /* =========================================
-       2. 輸入元件與下拉選單強力修復 (關鍵修正)
+       2. 手機下拉選單強力修復
        ========================================= */
     
-    /* 輸入框外殼 (Selectbox, Multiselect, TextInput) */
-    div[data-baseweb="select"] > div, 
-    div[data-baseweb="base-input"] {
+    /* 輸入框本體 */
+    div[data-baseweb="select"] > div, div[data-baseweb="base-input"] {
         background-color: #262730 !important;
-        border-color: #444 !important;
         color: #FAFAFA !important;
+        border-color: #444 !important;
     }
 
-    /* 下拉選單 "彈出列表" 的背景與文字 */
-    div[data-baseweb="popover"], div[data-baseweb="menu"] {
+    /* 彈出視窗 (Popover) 與 選單 (Menu) */
+    div[data-baseweb="popover"], div[data-baseweb="menu"], ul[role="listbox"] {
         background-color: #262730 !important;
         border: 1px solid #444 !important;
     }
-    
-    /* 下拉選單中的 "選項文字" */
-    div[data-baseweb="menu"] div, div[data-baseweb="menu"] li {
-        color: #FAFAFA !important; /* 強制亮白字 */
+
+    /* 選項文字 */
+    div[data-baseweb="menu"] li, div[data-baseweb="menu"] div {
+        color: #FAFAFA !important;
+        background-color: #262730 !important;
     }
 
-    /* 滑鼠滑過選項 / 手機按壓時的高亮色 */
+    /* 滑鼠滑過 / 手機按壓高亮 */
     div[data-baseweb="menu"] li:hover, 
     div[data-baseweb="menu"] li[aria-selected="true"] {
         background-color: #4DA6FF !important;
-        color: white !important;
+        color: #FFFFFF !important;
     }
-
-    /* 多選選單中，已經選中的 "標籤 (Chips)" */
+    
+    /* 多選標籤 */
     div[data-baseweb="tag"] {
         background-color: #4DA6FF !important;
         color: white !important;
     }
-    
-    /* 讓輸入游標也是白色的 */
-    input {
-        color: #FAFAFA !important; 
-        caret-color: #FAFAFA !important;
-    }
 
     /* =========================================
-       3. 表格樣式 (手機橫向滑動)
+       3. 表格樣式 (手機橫向滑動 + 無索引)
        ========================================= */
     .table-container {
         width: 100%;
@@ -90,7 +87,7 @@ st.markdown("""
         width: 100%;
         border-collapse: collapse;
         background-color: #1E1E1E !important; 
-        min-width: 600px; /* 強制最小寬度，確保手機不擠壓 */
+        min-width: 600px; /* 強制最小寬度，觸發滑動 */
     }
     
     .custom-table th {
@@ -98,32 +95,33 @@ st.markdown("""
         color: #4DA6FF !important;
         font-weight: 600;
         text-transform: uppercase;
-        padding: 12px 10px;
+        padding: 10px 8px;
         border-bottom: 2px solid #4DA6FF;
         border-right: 1px solid #333;
         white-space: nowrap; 
         text-align: left;
+        font-size: 14px;
     }
     
     .custom-table td {
         background-color: #1E1E1E !important;
         color: #E0E0E0 !important; 
-        padding: 10px 10px;
+        padding: 8px 8px;
         border: 1px solid #333;
         white-space: nowrap; 
         vertical-align: middle;
-        font-size: 15px;
+        font-size: 14px;
     }
 
     /* =========================================
-       4. 狀態標籤樣式
+       4. 狀態標籤與圖表
        ========================================= */
     .status-red {
         background-color: #3A0000 !important;
         color: #FF4D4D !important;
         font-weight: bold;
         border: 1px solid #FF4D4D;
-        padding: 2px 8px;
+        padding: 2px 6px;
         border-radius: 4px;
         white-space: nowrap;
     }
@@ -132,33 +130,19 @@ st.markdown("""
         color: #4CAF50 !important;
         font-weight: bold;
         border: 1px solid #4CAF50;
-        padding: 2px 8px;
+        padding: 2px 6px;
         border-radius: 4px;
         white-space: nowrap;
     }
     
-    /* Expander 標題 */
     .streamlit-expanderHeader {
         background-color: #262730 !important;
         color: #FAFAFA !important;
         border: 1px solid #444 !important;
     }
     
-    /* Chart 反轉修正 */
-    [data-testid="stChart"] { filter: invert(0); }
-    
-    /* 按鈕樣式 (Primary) */
-    button[kind="primary"] {
-        background-color: #4DA6FF !important;
-        color: white !important;
-        border: none !important;
-    }
-    /* 按鈕樣式 (Secondary) */
-    button[kind="secondary"] {
-        background-color: #262730 !important;
-        color: #FAFAFA !important;
-        border: 1px solid #4DA6FF !important;
-    }
+    /* 讓 Altair 圖表不被反轉顏色 */
+    [data-testid="stChart"] { filter: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -200,7 +184,7 @@ if uploaded_files:
         st.error(f"檔案讀取失敗: {e}")
         st.stop()
 
-    # === 欄位標準化與去重 ===
+    # === 欄位標準化 ===
     df.columns = df.columns.str.strip()
     
     rename_map = {
@@ -234,7 +218,7 @@ if uploaded_files:
         st.stop()
 
     # --------------------------
-    # 繪圖函式：規律性長條圖
+    # 繪圖函式 (已移除 padding 參數以修復 Crash)
     # --------------------------
     def render_regularity_chart(data, color_hex="#4DA6FF"):
         chart_data = data.copy()
@@ -244,19 +228,45 @@ if uploaded_files:
         full_hours = pd.DataFrame({'Hour': range(24)})
         final_data = pd.merge(full_hours, hourly_stats, on='Hour', how='left').fillna(0)
         
+        # 深色背景圖表
         chart = alt.Chart(final_data).mark_bar(color=color_hex).encode(
             x=alt.X('Hour:O', title='時段 (0-23點)', scale=alt.Scale(domain=list(range(24)))), 
             y=alt.Y('DaysCount:Q', title='出現天數', axis=alt.Axis(tickMinStep=1, format='d')),
             tooltip=[alt.Tooltip('Hour', title='時段'), alt.Tooltip('DaysCount', title='累計天數')]
-        ).properties(height=250).configure_axis(
-            labelFontSize=12, titleFontSize=14, grid=True, 
+        ).properties(
+            height=180, 
+            background='#1E1E1E'
+            # padding=10  <-- 已移除此行，修復 TypeError
+        ).configure_axis(
+            labelFontSize=11, titleFontSize=13, grid=True, 
+            gridColor='#444', labelColor='#E0E0E0', titleColor='#E0E0E0'
+        ).configure_view(strokeWidth=0).interactive()
+        
+        st.altair_chart(chart, use_container_width=True)
+
+    def render_heatmap_chart(data, color_scheme='blues'):
+        chart_data = data.copy()
+        chart_data['Hour'] = chart_data['完整時間'].dt.hour
+        
+        chart = alt.Chart(chart_data).mark_rect(stroke='black', strokeWidth=0.5).encode(
+            x=alt.X('Hour:O', title='時段', scale=alt.Scale(domain=list(range(24)))), 
+            y=alt.Y('日期:O', title='日期'),
+            color=alt.Color('count()', title='頻率', scale=alt.Scale(scheme=color_scheme)),
+            tooltip=['日期', 'Hour', 'count()']
+        ).properties(
+            height=200, background='#1E1E1E'
+            # padding=10 <-- 已移除此行，修復 TypeError
+        ).configure_axis(
+            labelFontSize=11, titleFontSize=13, grid=True, gridColor='#444',
+            labelColor='#E0E0E0', titleColor='#E0E0E0'
+        ).configure_legend(
             labelColor='#E0E0E0', titleColor='#E0E0E0'
         ).configure_view(strokeWidth=0).interactive()
         
         st.altair_chart(chart, use_container_width=True)
 
     # --------------------------
-    # HTML 表格渲染 (手機優化版)
+    # HTML 表格渲染
     # --------------------------
     def render_html_table(dataframe):
         if dataframe.empty:
@@ -374,6 +384,7 @@ if uploaded_files:
                     expand_label = f"{place} (符合條件 {count} 次)"
                     with st.expander(expand_label, expanded=(idx==0)):
                         st.markdown("##### 📅 過夜規律分析")
+                        # 修正：這裡傳入 color_hex 參數
                         render_regularity_chart(details, color_hex="#FF6B6B")
                         
                         st.markdown("##### 📋 停留與動線")
@@ -423,9 +434,8 @@ if uploaded_files:
                         days = (next_time_obj.date() - row['完整時間'].date()).days
                         leave_time = f"{next_time_obj.strftime('%H:%M:%S')} (+{days}天)"
                     
-                    # 狀態處理
                     if pd.isna(dur):
-                        status_html = '<span class="status-green">紀錄結束</span>'
+                        status_html = '<span class="status-green">🟢 正常</span>'
                         note = "無後續"
                     else:
                         m = int(dur // 60)
