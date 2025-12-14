@@ -1,17 +1,25 @@
 import streamlit as st
 import pandas as pd
-import itertools # 用於處理多車排列組合
+import itertools
+import altair as alt
 
 # 1. 頁面設定
 st.set_page_config(page_title="車輛軌跡分析系統", layout="wide")
 
-# 2. CSS 強制修正 (深色極簡 / 無索引表格 / 戰情風格)
+# 2. CSS 強制修正 (手機適配 + 強制高對比配色)
 st.markdown("""
 <style>
-    /* === 全域深色主題 === */
+    /* =========================================
+       1. 全域強制配色 (解決手機自動變色導致看不清的問題)
+       ========================================= */
     .stApp {
-        background-color: #0E1117 !important;
-        color: #FAFAFA !important;
+        background-color: #0E1117 !important; /* 強制深黑背景 */
+        color: #FAFAFA !important;            /* 強制亮白文字 */
+    }
+
+    /* 針對所有文字強制設定顏色，避免被手機瀏覽器覆蓋 */
+    p, div, span, label, h1, h2, h3, h4, h5, h6, li {
+        color: #E0E0E0 !important;
     }
 
     /* 全域字體 */
@@ -19,46 +27,86 @@ st.markdown("""
         font-family: "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif !important;
     }
 
-    /* === 自定義 HTML 表格樣式 (取代 st.table 以移除索引) === */
+    /* =========================================
+       2. 表格樣式 (手機版支援左右滑動)
+       ========================================= */
+    
+    /* 表格容器：關鍵！讓表格可以左右滑動 */
+    .table-container {
+        width: 100%;
+        overflow-x: auto; /* 若內容太寬，顯示卷軸 */
+        -webkit-overflow-scrolling: touch; /* 讓手機滑動更順暢 */
+        margin-bottom: 1rem;
+        border: 1px solid #333;
+        border-radius: 4px;
+    }
+
     .custom-table {
         width: 100%;
         border-collapse: collapse;
-        background-color: #1E1E1E;
-        color: #E0E0E0;
-        font-size: 15px;
+        background-color: #1E1E1E !important; /* 表格背景：深灰 */
+        min-width: 600px; /* 強制表格最小寬度，避免手機上擠成一團 */
     }
     
     .custom-table th {
-        background-color: #000000;
-        color: #4DA6FF;
+        background-color: #000000 !important; /* 表頭背景：全黑 */
+        color: #4DA6FF !important;            /* 表頭文字：亮藍 */
         font-weight: 600;
         text-transform: uppercase;
-        padding: 10px 12px;
+        padding: 12px 10px;
         border-bottom: 2px solid #4DA6FF;
-        border: 1px solid #333;
+        border-right: 1px solid #333;
         white-space: nowrap; /* 表頭不換行 */
         text-align: left;
     }
     
     .custom-table td {
-        padding: 8px 12px;
+        background-color: #1E1E1E !important; /* 確保儲存格背景 */
+        color: #E0E0E0 !important;            /* 確保內容文字亮色 */
+        padding: 10px 10px;
         border: 1px solid #333;
-        white-space: nowrap; /* 強制內容不換行 */
+        white-space: nowrap; /* 強制內容不換行，保持整齊 */
         vertical-align: middle;
+        font-size: 15px;
     }
 
-    /* 狀態顏色 CSS 類別 */
+    /* =========================================
+       3. 狀態標籤樣式
+       ========================================= */
     .status-red {
-        background-color: #3A0000;
-        color: #FF4D4D;
+        background-color: #3A0000 !important;
+        color: #FF4D4D !important;
         font-weight: bold;
-        border: 1px solid #FF4D4D !important;
+        border: 1px solid #FF4D4D;
+        padding: 2px 8px;
+        border-radius: 4px;
+        display: inline-block;
     }
     .status-green {
-        background-color: #1E1E1E;
-        color: #E0E0E0;
+        background-color: #0d330e !important;
+        color: #4CAF50 !important;
+        font-weight: bold;
+        border: 1px solid #4CAF50;
+        padding: 2px 8px;
+        border-radius: 4px;
+        display: inline-block;
     }
     
+    /* =========================================
+       4. 手機版專用調整 (Media Query)
+       ========================================= */
+    @media only screen and (max-width: 600px) {
+        /* 手機上字體稍微改小，增加顯示效率 */
+        .custom-table td, .custom-table th {
+            font-size: 13px !important; 
+            padding: 8px 6px !important;
+        }
+        
+        /* 調整標題大小 */
+        h1 { font-size: 24px !important; }
+        h3 { font-size: 18px !important; }
+    }
+
     /* Expander 樣式 */
     .streamlit-expanderHeader {
         background-color: #262730 !important;
@@ -68,12 +116,8 @@ st.markdown("""
         font-size: 16px !important;
     }
     
-    /* Chart 適應 */
+    /* Chart 圖表適應 (保持原色，不被深色模式反轉) */
     [data-testid="stChart"] { filter: invert(0); }
-    
-    /* 隱藏預設表格索引的備用方案 (若有漏網之魚) */
-    thead tr th:first-child { display:none }
-    tbody tr td:first-child { display:none }
 </style>
 """, unsafe_allow_html=True)
 
@@ -115,24 +159,25 @@ if uploaded_files:
         st.error(f"檔案讀取失敗: {e}")
         st.stop()
 
-    # === 欄位標準化 ===
+    # === 欄位標準化與去重 ===
     df.columns = df.columns.str.strip()
+    
     rename_map = {
         '車號': '車牌', '路口': '地點', '監視器': '地點',
-        'location': '地點', 'plate': '車牌'
+        'location': '地點', 'plate': '車牌', 'date': '日期', 'time': '時間'
     }
     df.rename(columns=rename_map, inplace=True)
+    df = df.loc[:, ~df.columns.duplicated()]
 
     required_cols = ['車牌', '地點', '日期', '時間']
     if not set(required_cols).issubset(df.columns):
-        st.error(f"資料格式錯誤，缺少欄位: {required_cols}")
+        st.error(f"資料格式錯誤，缺少欄位: {required_cols}。目前欄位: {list(df.columns)}")
         st.stop()
 
     try:
         df['車牌'] = df['車牌'].str.strip()
         df['地點'] = df['地點'].str.strip()
         
-        # 日期標準化
         df['temp_date'] = pd.to_datetime(df['日期'])
         df['日期'] = df['temp_date'].dt.strftime('%Y-%m-%d')
         df['完整時間'] = pd.to_datetime(df['日期'] + ' ' + df['時間'].astype(str))
@@ -148,28 +193,47 @@ if uploaded_files:
         st.stop()
 
     # --------------------------
-    # 核心：HTML 表格渲染函式 (移除索引的關鍵)
+    # 繪圖函式：規律性長條圖
     # --------------------------
-    def render_html_table(dataframe, highlight_col=None):
-        """
-        將 DataFrame 轉換為無索引的 HTML 表格
-        """
+    def render_regularity_chart(data, color_hex="#4DA6FF"):
+        chart_data = data.copy()
+        chart_data['Hour'] = chart_data['完整時間'].dt.hour
+        
+        hourly_stats = chart_data.groupby('Hour')['日期'].nunique().reset_index(name='DaysCount')
+        full_hours = pd.DataFrame({'Hour': range(24)})
+        final_data = pd.merge(full_hours, hourly_stats, on='Hour', how='left').fillna(0)
+        
+        chart = alt.Chart(final_data).mark_bar(color=color_hex).encode(
+            x=alt.X('Hour:O', title='時段 (0-23點)', scale=alt.Scale(domain=list(range(24)))), 
+            y=alt.Y('DaysCount:Q', title='出現天數', axis=alt.Axis(tickMinStep=1, format='d')),
+            tooltip=[alt.Tooltip('Hour', title='時段'), alt.Tooltip('DaysCount', title='累計天數')]
+        ).properties(height=250).configure_axis(
+            labelFontSize=12, titleFontSize=14, grid=True, 
+            labelColor='#E0E0E0', titleColor='#E0E0E0' # 圖表文字也強制亮色
+        ).configure_view(strokeWidth=0).interactive()
+        
+        st.altair_chart(chart, use_container_width=True)
+
+    # --------------------------
+    # HTML 表格渲染 (手機優化版)
+    # --------------------------
+    def render_html_table(dataframe):
         if dataframe.empty:
             st.warning("無資料")
             return
-
-        # 1. 轉換為 HTML，設定 index=False 徹底移除左側數字
-        # escape=False 允許我們在儲存格內放 HTML (例如顏色標記)
-        html = dataframe.to_html(index=False, classes="custom-table", escape=False)
         
-        # 2. 顯示
-        st.markdown(html, unsafe_allow_html=True)
+        # 產生 HTML
+        table_html = dataframe.to_html(index=False, classes="custom-table", escape=False)
+        
+        # 關鍵：將 Table 包在一個 div 容器內，設定 overflow-x: auto
+        # 這樣在手機上就可以左右滑動，而不會壓縮到變形或看不到字
+        final_html = f'<div class="table-container">{table_html}</div>'
+        
+        st.markdown(final_html, unsafe_allow_html=True)
 
     # --------------------------
-    # 資料處理函式
+    # 資料格式化函式
     # --------------------------
-    
-    # 模式 A: 詳細版 (含前往地點)
     def format_full_detail_table(data_chunk):
         display = data_chunk.copy()
         display['抵達時間'] = display['完整時間'].dt.strftime('%H:%M:%S')
@@ -190,11 +254,11 @@ if uploaded_files:
             m = int(sec // 60)
             h = int(m // 60)
             rem_m = m % 60
-            if h > 0: return f"{h}時{rem_m}分"
+            if h > 0: return f"{h}小時{rem_m}分"
             else: return f"{m}分"
 
         display['停留'] = display['停留秒數'].apply(format_duration)
-        return display[['日期', '抵達時間', '離開時間', '前往地點', '停留']].sort_values(by=['日期', '抵達時間'])
+        return display[['日期', '抵達時間', '離開時間', '前往地點', '停留']].sort_values(by=['日期', '抵達時間'], ascending=[False, True])
 
     # --------------------------
     # 主頁面內容
@@ -216,7 +280,7 @@ if uploaded_files:
             place_counts = car_data['地點'].value_counts().reset_index()
             place_counts.columns = ['地點', '次數']
             
-            st.info("點擊列表展開查看詳細資料")
+            st.info("💡 柱狀圖越高，代表該時段「經常出現」(天數多)。")
             
             for index, row in place_counts.head(20).iterrows():
                 place = row['地點']
@@ -229,14 +293,10 @@ if uploaded_files:
                 label = f"#{rank} {place} (共 {count} 次)"
                 
                 with st.expander(label):
-                    st.markdown("##### 時段分佈")
-                    records['Hour'] = records['完整時間'].dt.hour
-                    hourly_counts = records['Hour'].value_counts().sort_index()
-                    full_index = pd.Series(0, index=range(24))
-                    final_counts = full_index.add(hourly_counts, fill_value=0)
-                    st.bar_chart(final_counts, color="#4DA6FF", height=180)
+                    st.markdown("##### 📊 規律性分析")
+                    render_regularity_chart(records, color_hex="#4DA6FF")
                     
-                    st.markdown("##### 詳細動線紀錄")
+                    st.markdown("##### 📋 詳細動線紀錄")
                     render_html_table(formatted_table)
 
     # === 分頁 2: 居住地判讀 ===
@@ -277,14 +337,10 @@ if uploaded_files:
                     
                     expand_label = f"{place} (符合條件 {count} 次)"
                     with st.expander(expand_label, expanded=(idx==0)):
-                        st.markdown(f"##### 時段分佈")
-                        details['Hour'] = details['完整時間'].dt.hour
-                        hourly_counts = details['Hour'].value_counts().sort_index()
-                        full_index = pd.Series(0, index=range(24))
-                        final_counts = full_index.add(hourly_counts, fill_value=0)
-                        st.bar_chart(final_counts, color="#FF6B6B", height=180)
+                        st.markdown("##### 📅 過夜規律分析")
+                        render_regularity_chart(details, color_hex="#FF6B6B")
                         
-                        st.markdown("##### 停留與動線")
+                        st.markdown("##### 📋 停留與動線")
                         render_html_table(formatted_table)
             else:
                 st.warning("查無符合過夜條件之紀錄")
@@ -331,7 +387,6 @@ if uploaded_files:
                         days = (next_time_obj.date() - row['完整時間'].date()).days
                         leave_time = f"{next_time_obj.strftime('%H:%M:%S')} (+{days}天)"
                     
-                    # 狀態處理：嵌入 HTML class
                     if pd.isna(dur):
                         status_html = '<span class="status-green">紀錄結束</span>'
                         note = "無後續"
@@ -342,11 +397,10 @@ if uploaded_files:
                         time_txt = f"{m}分" if h == 0 else f"{h}時{rem_m}分"
                         
                         if m >= alert_val:
-                            # 紅色異常狀態 class
+                            # 加入 class="status-red" 讓 CSS 抓
                             status_html = f'<span class="status-red">🔴 異常</span>'
                             note = f"停留 {time_txt}"
                         else:
-                            # 綠色正常狀態 class
                             status_html = f'<span class="status-green">🟢 正常</span>'
                             note = f"間隔 {time_txt}"
 
@@ -354,55 +408,42 @@ if uploaded_files:
                         "抵達時間": arr_time,
                         "地點": loc,
                         "離開時間": leave_time,
-                        "狀態": status_html, # 這裡放入 HTML
+                        "狀態": status_html,
                         "說明": note
                     })
                 
                 res_df = pd.DataFrame(display_list)
                 st.write(f"日期：{date_daily}")
-                # 使用 render_html_table 渲染，自動解析 HTML 標籤
                 render_html_table(res_df)
 
     # === 分頁 4: 同夥比對 (多車版) ===
     with tab4:
         st.subheader("多車接觸關聯分析")
         
-        # 1. 多選選單
-        selected_cars = st.multiselect("請選擇比對車輛 (至少 2 台，可多選)", all_cars, default=all_cars[:2] if len(all_cars)>=2 else None)
-        
-        # 2. 時間容許值 (分鐘)
+        selected_cars = st.multiselect("請選擇比對車輛 (至少 2 台)", all_cars, default=all_cars[:2] if len(all_cars)>=2 else None)
         min_diff = st.number_input("時間容許誤差值 (分鐘)", 1, 60, 5)
-        sec_diff = min_diff * 60 # 轉為秒數計算
+        sec_diff = min_diff * 60
         
         if st.button("執行群組比對"):
             if len(selected_cars) < 2:
-                st.error("請至少選擇兩台車輛進行比對")
+                st.error("請至少選擇兩台車輛")
             else:
                 results_list = []
-                
-                # 產生所有排列組合 (Pairwise)
-                # 例如選 [A, B, C] -> 比對 (A,B), (A,C), (B,C)
                 combinations = list(itertools.combinations(selected_cars, 2))
                 
                 progress_text = st.empty()
                 
                 for idx, (car_a, car_b) in enumerate(combinations):
                     progress_text.text(f"正在比對：{car_a} vs {car_b} ...")
-                    
                     da = df[df['車牌'] == car_a]
                     db = df[df['車牌'] == car_b]
-                    
-                    # Inner Join 找出同地點
                     merged = pd.merge(da, db, on='地點', suffixes=('_A', '_B'))
                     
                     if not merged.empty:
-                        # 計算時間差
                         merged['秒差'] = (merged['完整時間_A'] - merged['完整時間_B']).abs().dt.total_seconds()
-                        # 篩選
                         valid = merged[merged['秒差'] <= sec_diff].copy()
                         
                         if not valid.empty:
-                            # 整理格式
                             for _, row in valid.iterrows():
                                 results_list.append({
                                     '地點': row['地點'],
@@ -412,7 +453,6 @@ if uploaded_files:
                                     '車輛 2': car_b,
                                     '時間 2': row['完整時間_B'].strftime('%H:%M:%S'),
                                     '誤差': f"{int(row['秒差'] // 60)}分{int(row['秒差'] % 60)}秒",
-                                    # 用於排序的隱藏欄位
                                     'sort_time': row['完整時間_A'] 
                                 })
                 
@@ -420,17 +460,11 @@ if uploaded_files:
                 
                 if results_list:
                     st.warning(f"分析完成！共發現 {len(results_list)} 筆接觸紀錄")
-                    
-                    # 轉為 DataFrame 並排序
                     res_df = pd.DataFrame(results_list)
                     res_df = res_df.sort_values(by='sort_time', ascending=False)
-                    
-                    # 移除排序用的暫存欄位
                     res_df = res_df.drop(columns=['sort_time'])
-                    
-                    # 顯示無索引表格
                     render_html_table(res_df)
                 else:
-                    st.success("分析完成：所選車輛群組間無符合條件的接觸紀錄")
+                    st.success("分析完成：無符合條件的接觸紀錄")
 else:
-    st.info("請由左側選單匯入資料 (支援多檔上傳) 以開始分析")
+    st.info("請由左側選單匯入資料以開始分析")
