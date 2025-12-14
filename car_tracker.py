@@ -6,20 +6,32 @@ import altair as alt
 # 1. 頁面設定
 st.set_page_config(page_title="車輛軌跡分析系統", layout="wide")
 
-# 2. CSS 強制修正 (手機適配 + 強制高對比配色)
+# 2. CSS 強制修正 (針對手機瀏覽器強制覆蓋樣式)
 st.markdown("""
 <style>
     /* =========================================
-       1. 全域強制配色 (解決手機自動變色導致看不清的問題)
+       1. 暴力強制全域配色 (修復手機版白底白字問題)
        ========================================= */
-    .stApp {
-        background-color: #0E1117 !important; /* 強制深黑背景 */
-        color: #FAFAFA !important;            /* 強制亮白文字 */
+    
+    /* 強制主畫面背景為深黑 */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+        background-color: #0E1117 !important;
+    }
+    
+    /* 強制側邊欄背景 */
+    [data-testid="stSidebar"] {
+        background-color: #262730 !important;
     }
 
-    /* 針對所有文字強制設定顏色，避免被手機瀏覽器覆蓋 */
-    p, div, span, label, h1, h2, h3, h4, h5, h6, li {
-        color: #E0E0E0 !important;
+    /* 強制所有基本文字顏色為亮白 */
+    .stApp, .stApp p, .stApp div, .stApp span, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6, .stApp li {
+        color: #FAFAFA !important;
+    }
+
+    /* 強制輸入框 (Input) 的文字顏色正確，避免白底白字 */
+    input, textarea, select {
+        color: #000000 !important; /* 輸入時文字為黑 */
+        background-color: #FFFFFF !important; /* 輸入框背景為白 */
     }
 
     /* 全域字體 */
@@ -28,44 +40,45 @@ st.markdown("""
     }
 
     /* =========================================
-       2. 表格樣式 (手機版支援左右滑動)
+       2. 表格樣式 (手機版左右滑動 + 高對比)
        ========================================= */
     
-    /* 表格容器：關鍵！讓表格可以左右滑動 */
+    /* 表格容器 */
     .table-container {
         width: 100%;
-        overflow-x: auto; /* 若內容太寬，顯示卷軸 */
-        -webkit-overflow-scrolling: touch; /* 讓手機滑動更順暢 */
+        overflow-x: auto; 
+        -webkit-overflow-scrolling: touch;
         margin-bottom: 1rem;
-        border: 1px solid #333;
+        border: 1px solid #444;
         border-radius: 4px;
+        background-color: #1E1E1E; /* 確保容器底色 */
     }
 
     .custom-table {
         width: 100%;
         border-collapse: collapse;
-        background-color: #1E1E1E !important; /* 表格背景：深灰 */
-        min-width: 600px; /* 強制表格最小寬度，避免手機上擠成一團 */
+        background-color: #1E1E1E !important; 
+        min-width: 600px; 
     }
     
     .custom-table th {
-        background-color: #000000 !important; /* 表頭背景：全黑 */
-        color: #4DA6FF !important;            /* 表頭文字：亮藍 */
+        background-color: #000000 !important;
+        color: #4DA6FF !important;
         font-weight: 600;
         text-transform: uppercase;
         padding: 12px 10px;
         border-bottom: 2px solid #4DA6FF;
         border-right: 1px solid #333;
-        white-space: nowrap; /* 表頭不換行 */
+        white-space: nowrap; 
         text-align: left;
     }
     
     .custom-table td {
-        background-color: #1E1E1E !important; /* 確保儲存格背景 */
-        color: #E0E0E0 !important;            /* 確保內容文字亮色 */
+        background-color: #1E1E1E !important;
+        color: #E0E0E0 !important; 
         padding: 10px 10px;
         border: 1px solid #333;
-        white-space: nowrap; /* 強制內容不換行，保持整齊 */
+        white-space: nowrap; 
         vertical-align: middle;
         font-size: 15px;
     }
@@ -81,6 +94,7 @@ st.markdown("""
         padding: 2px 8px;
         border-radius: 4px;
         display: inline-block;
+        white-space: nowrap;
     }
     .status-green {
         background-color: #0d330e !important;
@@ -90,23 +104,9 @@ st.markdown("""
         padding: 2px 8px;
         border-radius: 4px;
         display: inline-block;
+        white-space: nowrap;
     }
     
-    /* =========================================
-       4. 手機版專用調整 (Media Query)
-       ========================================= */
-    @media only screen and (max-width: 600px) {
-        /* 手機上字體稍微改小，增加顯示效率 */
-        .custom-table td, .custom-table th {
-            font-size: 13px !important; 
-            padding: 8px 6px !important;
-        }
-        
-        /* 調整標題大小 */
-        h1 { font-size: 24px !important; }
-        h3 { font-size: 18px !important; }
-    }
-
     /* Expander 樣式 */
     .streamlit-expanderHeader {
         background-color: #262730 !important;
@@ -116,7 +116,7 @@ st.markdown("""
         font-size: 16px !important;
     }
     
-    /* Chart 圖表適應 (保持原色，不被深色模式反轉) */
+    /* Chart 圖表適應 */
     [data-testid="stChart"] { filter: invert(0); }
 </style>
 """, unsafe_allow_html=True)
@@ -209,7 +209,7 @@ if uploaded_files:
             tooltip=[alt.Tooltip('Hour', title='時段'), alt.Tooltip('DaysCount', title='累計天數')]
         ).properties(height=250).configure_axis(
             labelFontSize=12, titleFontSize=14, grid=True, 
-            labelColor='#E0E0E0', titleColor='#E0E0E0' # 圖表文字也強制亮色
+            labelColor='#E0E0E0', titleColor='#E0E0E0'
         ).configure_view(strokeWidth=0).interactive()
         
         st.altair_chart(chart, use_container_width=True)
@@ -222,13 +222,8 @@ if uploaded_files:
             st.warning("無資料")
             return
         
-        # 產生 HTML
         table_html = dataframe.to_html(index=False, classes="custom-table", escape=False)
-        
-        # 關鍵：將 Table 包在一個 div 容器內，設定 overflow-x: auto
-        # 這樣在手機上就可以左右滑動，而不會壓縮到變形或看不到字
         final_html = f'<div class="table-container">{table_html}</div>'
-        
         st.markdown(final_html, unsafe_allow_html=True)
 
     # --------------------------
@@ -377,7 +372,6 @@ if uploaded_files:
                     loc = row['地點']
                     dur = row['停留秒數']
                     
-                    # 離開時間
                     next_time_obj = row['下筆時間']
                     if pd.isna(next_time_obj):
                         leave_time = "-"
@@ -397,7 +391,6 @@ if uploaded_files:
                         time_txt = f"{m}分" if h == 0 else f"{h}時{rem_m}分"
                         
                         if m >= alert_val:
-                            # 加入 class="status-red" 讓 CSS 抓
                             status_html = f'<span class="status-red">🔴 異常</span>'
                             note = f"停留 {time_txt}"
                         else:
