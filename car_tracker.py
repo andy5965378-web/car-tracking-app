@@ -6,32 +6,24 @@ import altair as alt
 # 1. 頁面設定
 st.set_page_config(page_title="車輛軌跡分析系統", layout="wide")
 
-# 2. CSS 強制修正 (針對手機瀏覽器強制覆蓋樣式)
+# 2. CSS 強制修正 (含手機選單配色修復)
 st.markdown("""
 <style>
     /* =========================================
-       1. 暴力強制全域配色 (修復手機版白底白字問題)
+       1. 全域與容器配色 (鎖定深色)
        ========================================= */
-    
-    /* 強制主畫面背景為深黑 */
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #0E1117 !important;
+        color: #FAFAFA !important;
     }
     
-    /* 強制側邊欄背景 */
     [data-testid="stSidebar"] {
         background-color: #262730 !important;
     }
 
-    /* 強制所有基本文字顏色為亮白 */
-    .stApp, .stApp p, .stApp div, .stApp span, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6, .stApp li {
-        color: #FAFAFA !important;
-    }
-
-    /* 強制輸入框 (Input) 的文字顏色正確，避免白底白字 */
-    input, textarea, select {
-        color: #000000 !important; /* 輸入時文字為黑 */
-        background-color: #FFFFFF !important; /* 輸入框背景為白 */
+    /* 強制所有文字顏色 */
+    .stApp p, .stApp div, .stApp span, .stApp label, h1, h2, h3, h4, h5, h6, li {
+        color: #E0E0E0 !important;
     }
 
     /* 全域字體 */
@@ -40,25 +32,65 @@ st.markdown("""
     }
 
     /* =========================================
-       2. 表格樣式 (手機版左右滑動 + 高對比)
+       2. 輸入元件與下拉選單強力修復 (關鍵修正)
        ========================================= */
     
-    /* 表格容器 */
+    /* 輸入框外殼 (Selectbox, Multiselect, TextInput) */
+    div[data-baseweb="select"] > div, 
+    div[data-baseweb="base-input"] {
+        background-color: #262730 !important;
+        border-color: #444 !important;
+        color: #FAFAFA !important;
+    }
+
+    /* 下拉選單 "彈出列表" 的背景與文字 */
+    div[data-baseweb="popover"], div[data-baseweb="menu"] {
+        background-color: #262730 !important;
+        border: 1px solid #444 !important;
+    }
+    
+    /* 下拉選單中的 "選項文字" */
+    div[data-baseweb="menu"] div, div[data-baseweb="menu"] li {
+        color: #FAFAFA !important; /* 強制亮白字 */
+    }
+
+    /* 滑鼠滑過選項 / 手機按壓時的高亮色 */
+    div[data-baseweb="menu"] li:hover, 
+    div[data-baseweb="menu"] li[aria-selected="true"] {
+        background-color: #4DA6FF !important;
+        color: white !important;
+    }
+
+    /* 多選選單中，已經選中的 "標籤 (Chips)" */
+    div[data-baseweb="tag"] {
+        background-color: #4DA6FF !important;
+        color: white !important;
+    }
+    
+    /* 讓輸入游標也是白色的 */
+    input {
+        color: #FAFAFA !important; 
+        caret-color: #FAFAFA !important;
+    }
+
+    /* =========================================
+       3. 表格樣式 (手機橫向滑動)
+       ========================================= */
     .table-container {
         width: 100%;
         overflow-x: auto; 
         -webkit-overflow-scrolling: touch;
         margin-bottom: 1rem;
-        border: 1px solid #444;
+        background-color: #1E1E1E;
+        border: 1px solid #333;
         border-radius: 4px;
-        background-color: #1E1E1E; /* 確保容器底色 */
     }
 
     .custom-table {
         width: 100%;
         border-collapse: collapse;
         background-color: #1E1E1E !important; 
-        min-width: 600px; 
+        min-width: 600px; /* 強制最小寬度，確保手機不擠壓 */
     }
     
     .custom-table th {
@@ -84,7 +116,7 @@ st.markdown("""
     }
 
     /* =========================================
-       3. 狀態標籤樣式
+       4. 狀態標籤樣式
        ========================================= */
     .status-red {
         background-color: #3A0000 !important;
@@ -93,7 +125,6 @@ st.markdown("""
         border: 1px solid #FF4D4D;
         padding: 2px 8px;
         border-radius: 4px;
-        display: inline-block;
         white-space: nowrap;
     }
     .status-green {
@@ -103,21 +134,31 @@ st.markdown("""
         border: 1px solid #4CAF50;
         padding: 2px 8px;
         border-radius: 4px;
-        display: inline-block;
         white-space: nowrap;
     }
     
-    /* Expander 樣式 */
+    /* Expander 標題 */
     .streamlit-expanderHeader {
         background-color: #262730 !important;
         color: #FAFAFA !important;
         border: 1px solid #444 !important;
-        border-radius: 4px;
-        font-size: 16px !important;
     }
     
-    /* Chart 圖表適應 */
+    /* Chart 反轉修正 */
     [data-testid="stChart"] { filter: invert(0); }
+    
+    /* 按鈕樣式 (Primary) */
+    button[kind="primary"] {
+        background-color: #4DA6FF !important;
+        color: white !important;
+        border: none !important;
+    }
+    /* 按鈕樣式 (Secondary) */
+    button[kind="secondary"] {
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+        border: 1px solid #4DA6FF !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -372,6 +413,7 @@ if uploaded_files:
                     loc = row['地點']
                     dur = row['停留秒數']
                     
+                    # 離開時間
                     next_time_obj = row['下筆時間']
                     if pd.isna(next_time_obj):
                         leave_time = "-"
@@ -381,6 +423,7 @@ if uploaded_files:
                         days = (next_time_obj.date() - row['完整時間'].date()).days
                         leave_time = f"{next_time_obj.strftime('%H:%M:%S')} (+{days}天)"
                     
+                    # 狀態處理
                     if pd.isna(dur):
                         status_html = '<span class="status-green">紀錄結束</span>'
                         note = "無後續"
