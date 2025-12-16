@@ -622,7 +622,3 @@ if uploaded_files:
 
 else:
     st.info("請由左側選單匯入資料以開始分析")
-
-else:
-    st.info("請由左側選單匯入資料以開始分析")
-
